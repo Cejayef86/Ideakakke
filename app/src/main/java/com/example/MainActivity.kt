@@ -2,6 +2,7 @@ package com.example
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
@@ -17,7 +18,6 @@ import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.compose.ui.platform.LocalContext
-import android.app.Activity
 import android.app.Application
 import com.example.data.configureAppCheck
 import com.example.ui.AuthScreen
@@ -72,7 +72,7 @@ fun AppNavigationRoot() {
         // Key by uid so account switching or logout cleans up and resets ViewModels cleanly
         key(uid) {
             val sessionOwner: SessionViewModelStoreOwner = viewModel(key = "session:$uid")
-            val activity = LocalContext.current as? Activity
+            val activity = LocalActivity.current
             DisposableEffect(sessionOwner, activity) {
                 onDispose {
                     if (activity?.isChangingConfigurations != true) {
