@@ -28,7 +28,7 @@ The Firebase suite starts a local Firestore emulator on 127.0.0.1:8085 and tests
 
 1. Download `google-services.json` for the existing Android app ID from Firebase Console. Put it in `app/google-services.json`, replacing the test fixture. It is ignored by Git; do not commit private credentials or keystores.
 2. Enable Google sign-in in Firebase Authentication. Register the signing certificate SHA-1/SHA-256 fingerprints and download the updated configuration with its web OAuth client. Use `./gradlew signingReport` to find debug fingerprints. A working Google account on a device or Google-enabled emulator is needed for sign-in.
-3. Confirm the named Firestore database in `app/src/main/res/values/firebase_applet_config.xml` belongs to that Firebase project. The current database name is preserved. `firebase.json` deploys the rules specifically to that database. Do not change it to `(default)` without migrating the data.
+3. Create the `(default)` Cloud Firestore database in that Firebase project. The app and `firebase.json` now both target that default database. For a fresh project, choose the hosting location deliberately before creating it; Sydney (`australia-southeast1`) is a suitable option for an Australian launch. Data from any previous AI Studio project is not migrated automatically.
 4. After testing against the intended project, deploy the rules explicitly with `npx firebase-tools deploy --only firestore:rules --project YOUR_PROJECT_ID`. These source changes do not deploy live rules automatically.
 5. Enable Firebase AI Logic and its Gemini Developer API backend in the same project. The current supported model is `gemini-3.8-flash`. Configure project quotas and App Check before testing a real generation.
 6. Register Play Integrity in Firebase App Check for production, including the **Google Play app-signing certificate** SHA-256. Debug builds contain the debug provider only; register its development token in Firebase Console. Release builds contain only the Play Integrity provider. The optional launch-intent debug-token injection exists only in the debug source set.
@@ -59,7 +59,7 @@ Before a Play submission, verify real Google sign-in, create/edit/delete and pub
 
 - Only an idea owner may edit or delete it. Any signed-in user may read public ideas and comment on them. Private ideas/comments are owner-only.
 - The collaborators list is a list of display names, not an invitation or access-control system. Adding a name does not grant access to private ideas.
-- Each signed-in screen has its own ViewModel store, cleared on logout/disposal. Repositories bind writes to their original signed-in UID.
+- Each account has a session ViewModel store retained across Android configuration changes. Logout and final activity destruction clear it. Repositories bind writes to their original signed-in UID.
 - Detail edits, priority changes, quadrant moves, research results and team additions use separate field updates so stale copies do not overwrite unrelated data.
 - Rules validate the complete contents of string lists with a join/split round trip. U+001F is reserved and cannot appear inside list items. Empty strings, punctuation and newlines remain supported. Unknown fields are rejected. Malformed legacy records are skipped individually instead of disabling an entire feed.
 - Private local Firebase data is excluded from Android cloud backups and device transfer. Existing production data must be assessed separately; source changes do not erase existing backups.
