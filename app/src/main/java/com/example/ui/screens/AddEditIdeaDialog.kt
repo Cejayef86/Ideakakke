@@ -67,6 +67,7 @@ import com.example.ui.theme.IndigoPrimary
 @Composable
 fun AddEditIdeaDialog(
     ideaToEdit: Idea? = null,
+    isSaving: Boolean = false,
     availableCategories: List<String>,
     onDismiss: () -> Unit,
     onSave: (
@@ -148,7 +149,7 @@ fun AddEditIdeaDialog(
                     // Title Field
                     OutlinedTextField(
                         value = title,
-                        onValueChange = { title = it },
+                        onValueChange = { title = it.take(200) },
                         label = { Text("Idea Title *") },
                         placeholder = { Text("e.g. Automated Mushroom Grow Kit") },
                         modifier = Modifier
@@ -161,7 +162,7 @@ fun AddEditIdeaDialog(
                     // Description Field
                     OutlinedTextField(
                         value = description,
-                        onValueChange = { description = it },
+                        onValueChange = { description = it.take(10000) },
                         label = { Text("Description & Notes") },
                         placeholder = { Text("Explain what you want to build, target audience, key components...") },
                         modifier = Modifier
@@ -187,7 +188,7 @@ fun AddEditIdeaDialog(
                             ) {
                                 OutlinedTextField(
                                     value = customCategory,
-                                    onValueChange = { customCategory = it },
+                                    onValueChange = { customCategory = it.take(60) },
                                     label = { Text("Custom Category") },
                                     placeholder = { Text("e.g. Hardware Hack") },
                                     modifier = Modifier.weight(1f),
@@ -553,11 +554,11 @@ fun AddEditIdeaDialog(
                                 )
                             }
                         },
-                        enabled = title.isNotBlank(),
+                        enabled = !isSaving && title.trim().length in 1..200 && description.length <= 10000 && category.length <= 60 && tags.size <= 30,
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.testTag("save_idea_button")
                     ) {
-                        Text(if (ideaToEdit == null) "Create Idea" else "Save Changes")
+                        Text(if (isSaving) "Saving…" else if (ideaToEdit == null) "Create Idea" else "Save Changes")
                     }
                 }
             }

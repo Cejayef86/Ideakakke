@@ -110,6 +110,7 @@ fun MainAppScreen(
 
     val availableCategories by viewModel.availableCategories.collectAsState()
     val availableTags by viewModel.availableTags.collectAsState()
+    val isSaving by viewModel.isSaving.collectAsState()
     val researchingIdeaId by viewModel.researchingIdeaId.collectAsState()
 
     val activeIdea by viewModel.activeIdea.collectAsState()
@@ -351,12 +352,12 @@ fun MainAppScreen(
     if (showAddEditDialog) {
         AddEditIdeaDialog(
             ideaToEdit = ideaToEdit,
+            isSaving = isSaving,
             availableCategories = availableCategories,
-            onDismiss = { showAddEditDialog = false },
+            onDismiss = { if (!isSaving) showAddEditDialog = false },
             onSave = { title, desc, cat, tags, priority, matrix, isPublic, runAi ->
-                showAddEditDialog = false
                 if (ideaToEdit == null) {
-                    viewModel.createIdea(title, desc, cat, tags, priority, matrix, isPublic, runAi)
+                    viewModel.createIdea(title, desc, cat, tags, priority, matrix, isPublic, runAi) { showAddEditDialog = false }
                 } else {
                     viewModel.updateIdeaDetails(
                         ideaToEdit!!.copy(
@@ -367,7 +368,8 @@ fun MainAppScreen(
                             priority = priority,
                             matrixQuadrant = matrix,
                             isPublic = isPublic
-                        )
+                        ),
+                        onSaved = { showAddEditDialog = false }
                     )
                 }
             }

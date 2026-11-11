@@ -19,3 +19,8 @@ debug.keystore
 
 # Firebase debug logs
 *-debug.log
+
+node_modules/
+*.jks
+*.keystore
+app/google-services.json

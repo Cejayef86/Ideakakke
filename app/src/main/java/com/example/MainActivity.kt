@@ -15,6 +15,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.compose.ui.platform.LocalContext
+import android.app.Application
 import com.example.data.configureAppCheck
 import com.example.ui.AuthScreen
 import com.example.ui.IdeaViewModel
@@ -67,7 +70,15 @@ fun AppNavigationRoot() {
         val uid = currentUser!!.uid
         // Key by uid so account switching or logout cleans up and resets ViewModels cleanly
         key(uid) {
-            val ideaViewModel: IdeaViewModel = viewModel(key = uid)
+            val sessionOwner = remember { SessionViewModelStoreOwner() }
+            DisposableEffect(sessionOwner) {
+                onDispose { sessionOwner.viewModelStore.clear() }
+            }
+            val application = LocalContext.current.applicationContext as Application
+            val ideaViewModel: IdeaViewModel = viewModel(
+                viewModelStoreOwner = sessionOwner,
+                factory = ViewModelProvider.AndroidViewModelFactory.getInstance(application)
+            )
             MainAppScreen(
                 viewModel = ideaViewModel,
                 onSignOut = {

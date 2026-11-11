@@ -61,6 +61,8 @@ import androidx.credentials.ClearCredentialStateRequest
 import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
+import kotlinx.coroutines.CancellationException
+import androidx.credentials.exceptions.NoCredentialException
 import androidx.credentials.exceptions.GetCredentialCancellationException
 import com.example.R
 import com.example.ui.theme.ElectricCyan
@@ -344,9 +346,13 @@ fun onGoogleSignInClicked(
             } else {
                 onAuthError("Unexpected credential type received")
             }
+        } catch (e: NoCredentialException) {
+            onAuthError("No Google account is available. Add a Google account in your device settings and try again.")
         } catch (e: GetCredentialCancellationException) {
             Log.w(TAG, "Google Sign-In flow cancelled: ${e.message}")
             onAuthCancelled()
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Google Sign-In failed", e)
             onAuthError(e.localizedMessage ?: "Sign in failed")
