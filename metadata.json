@@ -1,0 +1,6 @@
+{
+  "name": "IdeaForge",
+  "description": "Transform ideas into reality with automated AI topic research, Facebook Marketplace item recommendations, Eisenhower prioritization, and collaborative idea sharing.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

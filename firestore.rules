@@ -1,0 +1,97 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidIdea(data) {
+      return data.userId is string && data.userId.size() <= 128 &&
+             data.title is string && data.title.size() >= 1 && data.title.size() <= 200 &&
+             (!('authorName' in data) || (data.authorName is string && data.authorName.size() <= 100)) &&
+             (!('description' in data) || (data.description is string && data.description.size() <= 10000)) &&
+             (!('category' in data) || (data.category is string && data.category.size() <= 60)) &&
+             (!('priority' in data) || (data.priority in ['High', 'Medium', 'Low'])) &&
+             (!('matrixQuadrant' in data) || (data.matrixQuadrant in ['do_first', 'schedule', 'delegate', 'eliminate'])) &&
+             (!('isPublic' in data) || data.isPublic is bool) &&
+             (!('tags' in data) || (data.tags is list && data.tags.size() <= 30 && (data.tags.size() == 0 || data.tags[0] is string))) &&
+             (!('collaborators' in data) || (data.collaborators is list && data.collaborators.size() <= 30 && (data.collaborators.size() == 0 || data.collaborators[0] is string))) &&
+             (!('aiResearchSummary' in data) || (data.aiResearchSummary is string && data.aiResearchSummary.size() <= 15000)) &&
+             (!('aiActionPlan' in data) || (data.aiActionPlan is list && data.aiActionPlan.size() <= 50 && (data.aiActionPlan.size() == 0 || data.aiActionPlan[0] is string))) &&
+             (!('aiMarketplaceKeywords' in data) || (data.aiMarketplaceKeywords is list && data.aiMarketplaceKeywords.size() <= 50 && (data.aiMarketplaceKeywords.size() == 0 || data.aiMarketplaceKeywords[0] is string))) &&
+             (!('aiMarketplaceItems' in data) || (data.aiMarketplaceItems is string && data.aiMarketplaceItems.size() <= 25000));
+    }
+
+    function isValidComment(data, ideaId) {
+      return data.ideaId == ideaId &&
+             data.userId == request.auth.uid &&
+             data.content is string && data.content.size() >= 1 && data.content.size() <= 2000 &&
+             (!('userName' in data) || (data.userName is string && data.userName.size() <= 100));
+    }
+
+    match /ideas/{ideaId} {
+      allow get: if isSignedIn() && (resource.data.userId == request.auth.uid || resource.data.isPublic == true);
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || resource.data.isPublic == true);
+
+      allow create: if isSignedIn() &&
+                       isValidId(ideaId) &&
+                       request.resource.data.userId == request.auth.uid &&
+                       request.resource.data.keys().hasAll(['userId', 'title', 'createdAt', 'updatedAt']) &&
+                       request.resource.data.createdAt is timestamp &&
+                       request.resource.data.createdAt <= request.time &&
+                       request.resource.data.updatedAt is timestamp &&
+                       request.resource.data.updatedAt <= request.time &&
+                       isValidIdea(request.resource.data);
+
+      allow update: if isSignedIn() &&
+                       isValidId(ideaId) &&
+                       resource.data.userId == request.auth.uid &&
+                       request.resource.data.userId == resource.data.userId &&
+                       request.resource.data.createdAt == resource.data.createdAt &&
+                       request.resource.data.updatedAt is timestamp &&
+                       request.resource.data.updatedAt <= request.time &&
+                       isValidIdea(request.resource.data) &&
+                       request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                         'title', 'description', 'category', 'tags', 'priority', 'matrixQuadrant',
+                         'isPublic', 'collaborators', 'aiResearchSummary', 'aiActionPlan',
+                         'aiMarketplaceKeywords', 'aiMarketplaceItems', 'authorName', 'updatedAt'
+                       ]);
+
+      allow delete: if isSignedIn() &&
+                       isValidId(ideaId) &&
+                       resource.data.userId == request.auth.uid;
+
+      match /comments/{commentId} {
+        allow read: if isSignedIn() &&
+                       (get(/databases/$(database)/documents/ideas/$(ideaId)).data.userId == request.auth.uid ||
+                        get(/databases/$(database)/documents/ideas/$(ideaId)).data.isPublic == true);
+
+        allow create: if isSignedIn() &&
+                         isValidId(commentId) &&
+                         (get(/databases/$(database)/documents/ideas/$(ideaId)).data.userId == request.auth.uid ||
+                          get(/databases/$(database)/documents/ideas/$(ideaId)).data.isPublic == true) &&
+                         request.resource.data.userId == request.auth.uid &&
+                         request.resource.data.createdAt is timestamp &&
+                         request.resource.data.createdAt <= request.time &&
+                         isValidComment(request.resource.data, ideaId);
+
+        allow delete: if isSignedIn() &&
+                         isValidId(commentId) &&
+                         (resource.data.userId == request.auth.uid ||
+                          get(/databases/$(database)/documents/ideas/$(ideaId)).data.userId == request.auth.uid);
+
+        allow update: if false;
+      }
+    }
+  }
+}
