@@ -1,6 +1,9 @@
 {
   "firestore": {
-    "rules": "firestore.rules"
+    "database": "(default)",
+    "location": "australia-southeast1",
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
   },
   "emulators": {
     "firestore": {
@@ -13,6 +16,16 @@
     },
     "ui": {
       "enabled": false
+    }
+  },
+  "auth": {
+    "providers": {
+      "anonymous": false,
+      "emailPassword": false,
+      "googleSignIn": {
+        "oAuthBrandDisplayName": "IdeaForge",
+        "supportEmail": "christopherjfuller86@gmail.com"
+      }
     }
   }
 }

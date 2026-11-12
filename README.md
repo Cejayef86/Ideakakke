@@ -24,16 +24,31 @@ The Firebase suite starts a local Firestore emulator on 127.0.0.1:8085 and tests
 ./gradlew connectedDebugAndroidTest
 ```
 
-## Connect the real Firebase project
+## Live Firebase setup
 
-1. Download `google-services.json` for the existing Android app ID from Firebase Console. Put it in `app/google-services.json`, replacing the test fixture. It is ignored by Git; do not commit private credentials or keystores.
-2. Enable Google sign-in in Firebase Authentication. Register the signing certificate SHA-1/SHA-256 fingerprints and download the updated configuration with its web OAuth client. Use `./gradlew signingReport` to find debug fingerprints. A working Google account on a device or Google-enabled emulator is needed for sign-in.
-3. Create the `(default)` Cloud Firestore database in that Firebase project. The app and `firebase.json` now both target that default database. For a fresh project, choose the hosting location deliberately before creating it; Sydney (`australia-southeast1`) is a suitable option for an Australian launch. Data from any previous AI Studio project is not migrated automatically.
-4. After testing against the intended project, deploy the rules explicitly with `npx firebase-tools deploy --only firestore:rules --project YOUR_PROJECT_ID`. These source changes do not deploy live rules automatically.
-5. Enable Firebase AI Logic and its Gemini Developer API backend in the same project. The current supported model is `gemini-3.8-flash`. Configure project quotas and App Check before testing a real generation.
-6. Register Play Integrity in Firebase App Check for production, including the **Google Play app-signing certificate** SHA-256. Debug builds contain the debug provider only; register its development token in Firebase Console. Release builds contain only the Play Integrity provider. The optional launch-intent debug-token injection exists only in the debug source set.
+The app is registered in [IdeaForge Firebase Console](https://console.firebase.google.com/project/ideaforge-cejayef86-2026/overview), project `ideaforge-cejayef86-2026`, Android app `1:373523180877:android:37731b80c124c5ee751b04`.
 
-Firebase setup references: [Android configuration](https://firebase.google.com/docs/android/setup), [Google sign-in](https://firebase.google.com/docs/auth/android/google-signin), [Play Integrity](https://firebase.google.com/docs/app-check/android/play-integrity-provider), [AI Logic models](https://firebase.google.com/docs/ai-logic/models).
+- Cloud Firestore uses the Standard `(default)` database in Sydney (`australia-southeast1`). The checked-in rules and indexes have been deployed.
+- Google sign-in is enabled; anonymous and password sign-in are disabled. The development certificate is registered. Register the actual Google Play app-signing SHA-1/SHA-256 before release.
+- Firebase AI Logic uses the Gemini Developer API and `gemini-3.8-flash`. App Check and replay protection are enforced; the Android client requests limited-use tokens.
+- Play Integrity requires device integrity, a recognized app version and a Play license. Test production builds through Google Play after adding its signing certificate. Debug builds use a separate debug provider; private development tokens are never committed or embedded in the APK.
+- The project currently has no billing account linked. No paid-plan upgrade has been performed.
+
+Download the Android configuration directly using the signed-in Firebase CLI (PowerShell):
+
+```powershell
+npx -y firebase-tools@latest apps:sdkconfig ANDROID 1:373523180877:android:37731b80c124c5ee751b04 --project ideaforge-cejayef86-2026 --out app/google-services.json
+```
+
+The configuration is ignored by Git. Do not overwrite it with the demo fixture when building an APK for live testing. Backend deployment is explicit:
+
+```sh
+npx -y firebase-tools@latest deploy --only firestore,auth --project ideaforge-cejayef86-2026
+```
+
+The opt-in `LiveFirebaseConnectionTest` verifies that signed-out users cannot read ideas and that an App Check protected AI call returns structured research. Ordinary CI skips these live checks. On an isolated emulator, pass instrumentation arguments `runLiveFirebaseTests=true`, `firebaseProjectId=ideaforge-cejayef86-2026`, and `appCheckDebugToken` from a private registered development token. Never put that token in source, CI output or a shared command transcript. These checks do not exercise interactive Google sign-in or account workflows.
+
+References: [Android configuration](https://firebase.google.com/docs/android/setup), [Google sign-in](https://firebase.google.com/docs/auth/android/google-signin), [Play Integrity](https://firebase.google.com/docs/app-check/android/play-integrity-provider), [AI Logic App Check](https://firebase.google.com/docs/ai-logic/app-check).
 
 ## Signed release
 
