@@ -68,7 +68,7 @@ Then run:
 
 The release guard requires a real Firebase configuration and signing material before release tasks proceed. Output: `app/build/outputs/bundle/release/app-release.aab`. CI deliberately does not publish or sign releases.
 
-Before a Play submission, verify real Google sign-in, create/edit/delete and public/private sharing, AI research, comments, offline recovery, logout/re-login and account switching on physical devices. Complete the Play listing, privacy policy/Data safety declarations and [account-deletion requirements](https://support.google.com/googleplay/android-developer/answer/13327111) for the actual service. Those service/account decisions are outside an isolated test build; do not treat passing code checks as Play Store approval.
+Before a Play submission, verify real Google sign-in, create/edit/delete and public/private sharing, AI research, comments, offline recovery, logout/re-login and account switching on physical devices. Finish the Play listing and Data safety declarations, operate the reporting/moderation process, and complete Google account verification and required closed testing. Account-deletion controls and public policy pages are implemented below; passing code checks is not Play Store approval.
 
 ## Data and authorization
 
@@ -83,3 +83,35 @@ Before a Play submission, verify real Google sign-in, create/edit/delete and pub
 
 The repair includes regression tests for Firestore visibility mapping, stale editor saves, session cleanup/cancellation, selection recovery, and security-rule access control, list typing/limits and comments. See the pull request and CI results for the latest execution results and remaining limitations.
 
+
+
+## Publication controls and support website
+
+Public contact: IdeaForgeHQ27@gmail.com. Developer name: OzSmartApps. Public pages:
+
+- Privacy: https://ideaforge-cejayef86-2026.web.app/privacy
+- Community terms: https://ideaforge-cejayef86-2026.web.app/terms
+- Account deletion: https://ideaforge-cejayef86-2026.web.app/delete-account
+
+The app account menu links to policies, blocked users and account deletion. Terms consent and an adult confirmation are required before community participation. Reports can be submitted from idea safety menus, individual comments and AI output; they are stored under the reporter's private users/{uid}/reports collection for operator review. Users can block authors; their content is hidden and new comments are denied in either blocked direction. Administrators do not use client self-assigned roles: operators review/remove violating content through the trusted Firebase console.
+
+AI is optional and off by default for new ideas. The app discloses prompt transfer and the unpaid Gemini service's data-use practices before generating. Configurable harassment, hate, sexual and dangerous-content filters block medium-or-higher probability content. No paid-plan upgrade was performed. This initial release is prepared for adults in Australia; expanding to the EEA, Switzerland or UK requires revisiting Google's paid-service requirements and the disclosures.
+
+Account deletion requires fresh confirmation with the same Google account, writes an immutable UID-keyed deletion marker, and then deletes owned ideas and their comments, the user's comments across private/orphaned parents, reports, blocks and consent. Firebase Authentication is deleted last. Both Android and web cleanup are paginated and retryable; the marker prevents new writes from other sessions. Only a random UID and start time remain as a security record to stop old ID tokens from recreating deleted data. The public policy discloses this retention. Interrupted deletion is resumed after sign-in, without returning to normal editing. Owners can read/delete their own comments for cleanup even after another user makes the parent private or deletes it.
+
+When adding another user-data collection, update BOTH cleanup implementations and their tests. Web Firebase configuration contains public client identifiers, not administrator credentials; database rules enforce access. Never commit service-account keys, App Check debug tokens, sign-in codes, keystores or passwords. The OAuth consent-brand support email remains the Firebase project administrator; the new public support mailbox is separate.
+
+Build/deploy the support site and safeguards explicitly:
+
+```sh
+npm ci
+npm run build:web
+npm run test:firebase
+npx -y firebase-tools@latest deploy --only firestore,hosting --project ideaforge-cejayef86-2026
+```
+
+The combined Firebase suite tests both validation/authorization and full/interrupted deletion with disposable local accounts. Android's AccountDeletionEmulatorTest is opt-in with runDeletionEmulatorTests=true and uses only local demo emulators. StoreScreenshotTest is opt-in with captureStoreScreenshots=true and refuses non-demo project configuration. Neither is a production-account deletion test. CI enables the Android deletion test with local Auth/Firestore emulators; normal CI skips live Firebase checks and marketing captures.
+
+I've set up prototype Security Rules to keep the data in Firestore safe. They are designed to be secure for owner-only private content, private settings/reports, consent validation, bounded data and deletion write locks. However, you should review and verify them before broadly sharing your app. If you'd like, I can help you harden these rules.
+
+See docs/PLAY_RELEASE.md for the account-verification, signing, moderation and submission workflow.

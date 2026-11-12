@@ -100,7 +100,7 @@ fun AddEditIdeaDialog(
         mutableStateOf(ideaToEdit?.matrixQuadrant ?: EisenhowerQuadrant.SCHEDULE.id)
     }
     var isPublic by remember { mutableStateOf(ideaToEdit?.isPublic ?: false) }
-    var runAiResearch by remember { mutableStateOf(ideaToEdit == null) }
+    var runAiResearch by remember { mutableStateOf(false) }
 
     val popularTags = listOf("#tech", "#art", "#lowbudget", "#business", "#diy", "#ai", "#sustainability", "#mobile")
 
@@ -488,6 +488,8 @@ fun AddEditIdeaDialog(
                             )
                         }
                     }
+
+                    Text("AI is optional. When enabled, your title, description, category and tags are sent to Google's Gemini service. On the current unpaid service, Google may use prompts and responses to improve products. Don't include confidential or sensitive information.", style = MaterialTheme.typography.bodySmall)
 
                     // Run AI Research Checkbox
                     if (ideaToEdit == null) {

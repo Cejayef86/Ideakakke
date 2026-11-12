@@ -11,6 +11,14 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    // Deletion markers: UID-keyed startedAt timestamp only; retained to deny stale tokens.
+    // users/{uid}: private blocks (createdAt), reports (bounded metadata), preferences (terms consent).
+    function canWrite() {
+      return isSignedIn() && !exists(/databases/$(database)/documents/accountDeletions/$(request.auth.uid));
+    }
+    function acceptedTerms() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)/preferences/community).data.termsVersion == '2026-11-13';
+    }
     function isValidId(id) {
       return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
@@ -20,7 +28,7 @@ service cloud.firestore {
     // This validates every item without exceeding the rules expression budget.
     function isStringList(values, limit) {
       return values is list && values.size() <= limit &&
-             (values.size() == 0 || values.join('\u001F').split('\u001F') == values);
+             (values.size() == 0 || (values.join('\u001F').size() <= 15000 && values.join('\u001F').split('\u001F') == values));
     }
 
     function isValidIdea(data) {
@@ -57,7 +65,8 @@ service cloud.firestore {
       allow get: if isSignedIn() && (resource.data.userId == request.auth.uid || resource.data.isPublic == true);
       allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || resource.data.isPublic == true);
 
-      allow create: if isSignedIn() &&
+      allow create: if canWrite() &&
+                       (!('isPublic' in request.resource.data) || !request.resource.data.isPublic || acceptedTerms()) &&
                        isValidId(ideaId) &&
                        request.resource.data.userId == request.auth.uid &&
                        request.resource.data.keys().hasAll(['userId', 'title', 'createdAt', 'updatedAt']) &&
@@ -67,7 +76,8 @@ service cloud.firestore {
                        request.resource.data.updatedAt <= request.time &&
                        isValidIdea(request.resource.data);
 
-      allow update: if isSignedIn() &&
+      allow update: if canWrite() &&
+                       (!('isPublic' in request.resource.data) || !request.resource.data.isPublic || acceptedTerms()) &&
                        isValidId(ideaId) &&
                        resource.data.userId == request.auth.uid &&
                        request.resource.data.userId == resource.data.userId &&
@@ -90,7 +100,10 @@ service cloud.firestore {
                        (get(/databases/$(database)/documents/ideas/$(ideaId)).data.userId == request.auth.uid ||
                         get(/databases/$(database)/documents/ideas/$(ideaId)).data.isPublic == true);
 
-        allow create: if isSignedIn() &&
+        allow create: if canWrite() && acceptedTerms() &&
+                         !exists(/databases/$(database)/documents/accountDeletions/$(get(/databases/$(database)/documents/ideas/$(ideaId)).data.userId)) &&
+                         !exists(/databases/$(database)/documents/users/$(get(/databases/$(database)/documents/ideas/$(ideaId)).data.userId)/blocks/$(request.auth.uid)) &&
+                         !exists(/databases/$(database)/documents/users/$(request.auth.uid)/blocks/$(get(/databases/$(database)/documents/ideas/$(ideaId)).data.userId)) &&
                          isValidId(commentId) &&
                          (get(/databases/$(database)/documents/ideas/$(ideaId)).data.userId == request.auth.uid ||
                           get(/databases/$(database)/documents/ideas/$(ideaId)).data.isPublic == true) &&
@@ -107,5 +120,54 @@ service cloud.firestore {
         allow update: if false;
       }
     }
+
+    // Collection-group cleanup is owner-only, including orphaned/private-parent comments.
+    match /{path=**}/comments/{commentId} {
+      allow read, delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    match /accountDeletions/{uid} {
+      allow get: if isSignedIn() && request.auth.uid == uid;
+      allow create: if isSignedIn() && request.auth.uid == uid &&
+        request.auth.token.auth_time >= request.time.toMillis() / 1000 - 300 &&
+        request.resource.data.keys().hasOnly(['startedAt']) &&
+        request.resource.data.startedAt == request.time;
+      allow list, update, delete: if false;
+    }
+
+    function isValidBlock(data) {
+      return data.keys().hasOnly(['createdAt']) && data.createdAt == request.time;
+    }
+    function isValidConsent(data) {
+      return data.keys().hasOnly(['termsVersion', 'acceptedAt']) &&
+        data.termsVersion == '2026-11-13' && data.acceptedAt == request.time;
+    }
+    function isValidReport(data) {
+      return data.keys().hasOnly(['kind','ideaId','commentId','reason','details','createdAt']) &&
+        data.kind in ['idea','comment','ai'] && isValidId(data.ideaId) &&
+        data.commentId is string && data.commentId.size() <= 128 &&
+        ((data.kind == 'comment' && isValidId(data.commentId)) || (data.kind != 'comment' && data.commentId == '')) &&
+        data.reason in ['Unsafe or illegal','Harassment or hate','Sexual content','Spam or misleading','Other'] &&
+        data.details is string && data.details.size() <= 2000 && data.createdAt == request.time;
+    }
+    match /users/{uid}/blocks/{blockedUid} {
+      allow read, delete: if isSignedIn() && request.auth.uid == uid;
+      allow create, update: if canWrite() && request.auth.uid == uid &&
+        isValidId(blockedUid) && blockedUid != uid && isValidBlock(request.resource.data);
+    }
+    match /users/{uid}/preferences/{preferenceId} {
+      allow read, delete: if isSignedIn() && request.auth.uid == uid;
+      allow create, update: if canWrite() && request.auth.uid == uid &&
+        preferenceId == 'community' && isValidConsent(request.resource.data);
+    }
+    match /users/{uid}/reports/{reportId} {
+      allow read, delete: if isSignedIn() && request.auth.uid == uid;
+      allow create: if canWrite() && request.auth.uid == uid && isValidId(reportId) &&
+        isValidReport(request.resource.data) &&
+        (get(/databases/$(database)/documents/ideas/$(request.resource.data.ideaId)).data.userId == uid ||
+         get(/databases/$(database)/documents/ideas/$(request.resource.data.ideaId)).data.isPublic == true);
+      allow update: if false;
+    }
+
   }
 }

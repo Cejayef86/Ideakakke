@@ -160,13 +160,13 @@ fun AuthScreen(
                     ) {
                         FeatureRow(
                             icon = Icons.Default.AutoAwesome,
-                            title = "Instant AI Topic Research",
-                            description = "Automated market viability and step-by-step goal achievement write-up"
+                            title = "Optional AI Idea Planning",
+                            description = "Generate suggestions and practical steps; verify facts before acting"
                         )
                         FeatureRow(
                             icon = Icons.Default.ShoppingBag,
-                            title = "Facebook Marketplace Gear Hunter",
-                            description = "Identifies secondhand equipment with one-tap live marketplace searches"
+                            title = "Marketplace Equipment Searches",
+                            description = "Explore equipment suggestions and open searches on Facebook Marketplace"
                         )
                         FeatureRow(
                             icon = Icons.Default.ViewKanban,
@@ -176,7 +176,7 @@ fun AuthScreen(
                         FeatureRow(
                             icon = Icons.Default.Groups,
                             title = "Idea Sharing & Collaboration",
-                            description = "Form teams, share with innovators, and gather real-time feedback"
+                            description = "Share ideas, record collaborator names, and exchange feedback"
                         )
                     }
                 }
@@ -256,6 +256,9 @@ fun AuthScreen(
                     }
                 }
 
+                val uri = androidx.compose.ui.platform.LocalUriHandler.current
+                androidx.compose.material3.TextButton(onClick = { uri.openUri("https://ideaforge-cejayef86-2026.web.app/privacy") }) { Text("Privacy policy") }
+                androidx.compose.material3.TextButton(onClick = { uri.openUri("https://ideaforge-cejayef86-2026.web.app/delete-account") }) { Text("Delete account or get support") }
                 Spacer(modifier = Modifier.height(16.dp))
 
                 Text(

@@ -24,6 +24,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CheckCircle
@@ -94,12 +97,15 @@ fun IdeaDetailScreen(
     onTriggerResearch: () -> Unit,
     onAddCollaborator: (String) -> Unit,
     onAddComment: (String) -> Unit,
-    onDeleteComment: (String) -> Unit
+    onDeleteComment: (String) -> Unit,
+    onReport: (String, String) -> Unit,
+    onBlock: (String) -> Unit
 ) {
     BackHandler { onBackClick() }
     val context = LocalContext.current
     val isOwner = currentUserId != null && currentUserId == idea.userId
 
+    var showSafetyMenu by remember { mutableStateOf(false) }
     var showAddCollaboratorDialog by remember { mutableStateOf(false) }
     var collaboratorInput by remember { mutableStateOf("") }
     var commentInput by remember { mutableStateOf("") }
@@ -126,6 +132,14 @@ fun IdeaDetailScreen(
                     }
                 },
                 actions = {
+                    Box {
+                        IconButton(onClick = { showSafetyMenu = true }) { Icon(Icons.Default.MoreVert, contentDescription = "Content safety options") }
+                        DropdownMenu(expanded = showSafetyMenu, onDismissRequest = { showSafetyMenu = false }) {
+                            DropdownMenuItem(text = { Text("Report idea") }, onClick = { showSafetyMenu = false; onReport("idea", "") })
+                            if (idea.aiResearchSummary.isNotBlank()) DropdownMenuItem(text = { Text("Report AI output") }, onClick = { showSafetyMenu = false; onReport("ai", "") })
+                            if (!isOwner) DropdownMenuItem(text = { Text("Block author") }, onClick = { showSafetyMenu = false; onBlock(idea.userId) })
+                        }
+                    }
                     IconButton(onClick = { shareIdeaIntent(context, idea) }) {
                         Icon(Icons.Default.Share, contentDescription = "Share")
                     }
@@ -314,6 +328,8 @@ fun IdeaDetailScreen(
                             )
                         }
                     } else if (idea.aiResearchSummary.isNotBlank()) {
+                        Text("AI-generated suggestions can be inaccurate. Verify facts, prices and advice before acting.", style = MaterialTheme.typography.bodySmall)
+                        TextButton(onClick = { onReport("ai", "") }) { Text("Report AI output") }
                         Text(
                             text = idea.aiResearchSummary,
                             style = MaterialTheme.typography.bodyMedium,
@@ -600,7 +616,9 @@ fun IdeaDetailScreen(
                                     comment = comment,
                                     isCurrentAuthor = comment.userId == currentUserId,
                                     isIdeaOwner = isOwner,
-                                    onDelete = { onDeleteComment(comment.id) }
+                                    onDelete = { onDeleteComment(comment.id) },
+                                    onReport = { onReport("comment", comment.id) },
+                                    onBlock = { onBlock(comment.userId) }
                                 )
                             }
                         }
@@ -772,7 +790,9 @@ private fun CommentItem(
     comment: Comment,
     isCurrentAuthor: Boolean,
     isIdeaOwner: Boolean,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onReport: () -> Unit,
+    onBlock: () -> Unit
 ) {
     Surface(
         shape = RoundedCornerShape(12.dp),
@@ -807,7 +827,7 @@ private fun CommentItem(
                 }
 
                 if (isCurrentAuthor || isIdeaOwner) {
-                    IconButton(onClick = onDelete, modifier = Modifier.size(24.dp)) {
+                    IconButton(onClick = onDelete, modifier = Modifier.size(48.dp)) {
                         Icon(
                             imageVector = Icons.Default.Delete,
                             contentDescription = "Delete comment",
@@ -825,6 +845,11 @@ private fun CommentItem(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurface
             )
+        if (!isCurrentAuthor) Row {
+            TextButton(onClick = onReport) { Text("Report comment") }
+            TextButton(onClick = onBlock) { Text("Block author") }
         }
+        }
+
     }
 }
