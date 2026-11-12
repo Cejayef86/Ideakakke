@@ -30,7 +30,7 @@ The app is registered in [IdeaForge Firebase Console](https://console.firebase.g
 
 - Cloud Firestore uses the Standard `(default)` database in Sydney (`australia-southeast1`). The checked-in rules and indexes have been deployed.
 - Google sign-in is enabled; anonymous and password sign-in are disabled. The development certificate is registered. Register the actual Google Play app-signing SHA-1/SHA-256 before release.
-- Firebase AI Logic uses the Gemini Developer API and `gemini-3.8-flash`. App Check and replay protection are enforced; the Android client requests limited-use tokens.
+- Firebase AI Logic uses the Gemini Developer API and `gemini-3.5-flash-lite`. App Check and replay protection are enforced; the Android client requests limited-use tokens.
 - Play Integrity requires device integrity, a recognized app version and a Play license. Test production builds through Google Play after adding its signing certificate. Debug builds use a separate debug provider; private development tokens are never committed or embedded in the APK.
 - The project currently has no billing account linked. No paid-plan upgrade has been performed.
 

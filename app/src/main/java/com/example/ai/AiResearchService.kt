@@ -53,7 +53,7 @@ class AiResearchService {
             backend = GenerativeBackend.googleAI(),
             useLimitedUseAppCheckTokens = true
         ).generativeModel(
-            modelName = "gemini-3.8-flash",
+            modelName = "gemini-3.5-flash-lite",
             generationConfig = generationConfig {
                 // Keep interactive idea research responsive within the request timeout.
                 thinkingConfig = thinkingConfig { thinkingLevel = ThinkingLevel.LOW }
