@@ -17,5 +17,6 @@ class ExampleRobolectricTest {
     val context = ApplicationProvider.getApplicationContext<Context>()
     val appName = context.getString(R.string.app_name)
     assertEquals("IdeaForge", appName)
+    assertEquals("(default)", context.getString(R.string.firestore_database_id))
   }
 }

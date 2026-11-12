@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.ai.AiResearchService
+import com.example.data.observeSelection
 import com.example.data.IdeaRepository
 import com.example.model.Comment
 import com.example.model.EisenhowerQuadrant
@@ -12,15 +13,12 @@ import com.example.model.Idea
 import com.google.firebase.Firebase
 import com.google.firebase.auth.auth
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -47,6 +45,7 @@ class IdeaViewModel(application: Application) : AndroidViewModel(application) {
     val userIdeas: StateFlow<List<Idea>> = repository.observeUserIdeas()
         .catch { e ->
             Log.e(TAG, "Error collecting user ideas", e)
+            _errorMessage.value = "Could not load your ideas. Please sign in again."
             emit(emptyList())
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), emptyList())
@@ -54,6 +53,7 @@ class IdeaViewModel(application: Application) : AndroidViewModel(application) {
     val communityIdeas: StateFlow<List<Idea>> = repository.observeCommunityIdeas()
         .catch { e ->
             Log.e(TAG, "Error collecting community ideas", e)
+            _errorMessage.value = "Could not load community ideas. Please sign in again."
             emit(emptyList())
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), emptyList())
@@ -74,6 +74,9 @@ class IdeaViewModel(application: Application) : AndroidViewModel(application) {
     private val _viewMode = MutableStateFlow(ViewMode.LIST)
     val viewMode = _viewMode.asStateFlow()
 
+    private val _isSaving = MutableStateFlow(false)
+    val isSaving = _isSaving.asStateFlow()
+
     // Research status
     private val _researchingIdeaId = MutableStateFlow<String?>(null)
     val researchingIdeaId = _researchingIdeaId.asStateFlow()
@@ -88,19 +91,17 @@ class IdeaViewModel(application: Application) : AndroidViewModel(application) {
     private val _selectedIdeaId = MutableStateFlow<String?>(null)
     val selectedIdeaId = _selectedIdeaId.asStateFlow()
 
-    @OptIn(ExperimentalCoroutinesApi::class)
-    val activeIdea: StateFlow<Idea?> = _selectedIdeaId.flatMapLatest { id ->
-        if (id == null) flowOf(null) else repository.observeIdea(id)
-    }.catch {
-        emit(null)
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), null)
+    val activeIdea: StateFlow<Idea?> = _selectedIdeaId.observeSelection<Idea?>(
+        empty = null,
+        onError = { _errorMessage.value = "This idea is no longer available." },
+        observe = repository::observeIdea
+    ).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), null)
 
-    @OptIn(ExperimentalCoroutinesApi::class)
-    val activeComments: StateFlow<List<Comment>> = _selectedIdeaId.flatMapLatest { id ->
-        if (id == null) flowOf(emptyList()) else repository.observeComments(id)
-    }.catch {
-        emit(emptyList())
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), emptyList())
+    val activeComments: StateFlow<List<Comment>> = _selectedIdeaId.observeSelection(
+        empty = emptyList<Comment>(),
+        onError = { _errorMessage.value = "Could not load comments for this idea." },
+        observe = repository::observeComments
+    ).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), emptyList())
 
     // Filtered user ideas based on search, category, tag, and priority
     val filteredUserIdeas: StateFlow<List<Idea>> = combine(
@@ -175,8 +176,11 @@ class IdeaViewModel(application: Application) : AndroidViewModel(application) {
         priority: String,
         matrixQuadrant: String,
         isPublic: Boolean,
-        runAiResearchImmediately: Boolean
+        runAiResearchImmediately: Boolean,
+        onSaved: () -> Unit = {}
     ) {
+        if (_isSaving.value) return
+        _isSaving.value = true
         viewModelScope.launch {
             try {
                 val formattedTags = tags.map { if (it.startsWith("#")) it else "#$it" }
@@ -191,6 +195,7 @@ class IdeaViewModel(application: Application) : AndroidViewModel(application) {
                     authorName = currentUserName
                 )
                 _successMessage.value = "Idea '$title' created!"
+                onSaved()
 
                 if (runAiResearchImmediately) {
                     val createdIdea = Idea(
@@ -203,22 +208,33 @@ class IdeaViewModel(application: Application) : AndroidViewModel(application) {
                     )
                     triggerAiResearch(createdIdea)
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to create idea", e)
                 _errorMessage.value = "Could not save idea: ${e.localizedMessage ?: "Unknown error"}"
+            } finally {
+                _isSaving.value = false
             }
         }
     }
 
-    fun updateIdeaDetails(idea: Idea) {
+    fun updateIdeaDetails(idea: Idea, onSaved: () -> Unit = {}) {
+        if (_isSaving.value) return
+        _isSaving.value = true
         viewModelScope.launch {
             try {
                 val formattedTags = idea.tags.map { if (it.startsWith("#")) it else "#$it" }
                 repository.updateIdea(idea.copy(tags = formattedTags))
                 _successMessage.value = "Idea updated successfully!"
+                onSaved()
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to update idea", e)
                 _errorMessage.value = "Update failed: ${e.localizedMessage}"
+            } finally {
+                _isSaving.value = false
             }
         }
     }
@@ -226,9 +242,12 @@ class IdeaViewModel(application: Application) : AndroidViewModel(application) {
     fun updateIdeaQuadrant(idea: Idea, quadrant: EisenhowerQuadrant) {
         viewModelScope.launch {
             try {
-                repository.updateIdea(idea.copy(matrixQuadrant = quadrant.id))
+                repository.updateQuadrant(idea.id, quadrant.id)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to update quadrant", e)
+                _errorMessage.value = "Could not move idea. Please try again."
             }
         }
     }
@@ -236,9 +255,12 @@ class IdeaViewModel(application: Application) : AndroidViewModel(application) {
     fun updateIdeaPriority(idea: Idea, priority: String) {
         viewModelScope.launch {
             try {
-                repository.updateIdea(idea.copy(priority = priority))
+                repository.updatePriority(idea.id, priority)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to update priority", e)
+                _errorMessage.value = "Could not change priority. Please try again."
             }
         }
     }
@@ -251,6 +273,8 @@ class IdeaViewModel(application: Application) : AndroidViewModel(application) {
                     _selectedIdeaId.value = null
                 }
                 _successMessage.value = "Idea deleted"
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to delete idea", e)
                 _errorMessage.value = "Delete failed: ${e.localizedMessage}"
@@ -259,8 +283,9 @@ class IdeaViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun triggerAiResearch(idea: Idea) {
+        if (_researchingIdeaId.value != null || idea.userId != currentUserId) return
+        _researchingIdeaId.value = idea.id
         viewModelScope.launch {
-            _researchingIdeaId.value = idea.id
             try {
                 val result = aiService.researchIdea(
                     title = idea.title,
@@ -294,6 +319,8 @@ class IdeaViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 repository.addCollaborator(ideaId, name)
                 _successMessage.value = "Collaborator '$name' added to team!"
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to add collaborator", e)
                 _errorMessage.value = "Could not add collaborator"
@@ -306,6 +333,8 @@ class IdeaViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             try {
                 repository.addComment(ideaId, content, currentUserName)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to add comment", e)
                 _errorMessage.value = "Failed to post comment"
@@ -317,6 +346,8 @@ class IdeaViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             try {
                 repository.deleteComment(ideaId, commentId)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to delete comment", e)
             }

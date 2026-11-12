@@ -15,8 +15,21 @@ service cloud.firestore {
       return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
+    // A join/split round trip preserves a list only when every item is text.
+    // U+001F is reserved as the separator (not accepted inside list items).
+    // This validates every item without exceeding the rules expression budget.
+    function isStringList(values, limit) {
+      return values is list && values.size() <= limit &&
+             (values.size() == 0 || values.join('\u001F').split('\u001F') == values);
+    }
+
     function isValidIdea(data) {
-      return data.userId is string && data.userId.size() <= 128 &&
+      return data.keys().hasOnly([
+               'userId', 'authorName', 'title', 'description', 'category', 'tags',
+               'priority', 'matrixQuadrant', 'isPublic', 'collaborators',
+               'aiResearchSummary', 'aiActionPlan', 'aiMarketplaceKeywords',
+               'aiMarketplaceItems', 'createdAt', 'updatedAt'
+             ]) && data.userId is string && data.userId.size() <= 128 &&
              data.title is string && data.title.size() >= 1 && data.title.size() <= 200 &&
              (!('authorName' in data) || (data.authorName is string && data.authorName.size() <= 100)) &&
              (!('description' in data) || (data.description is string && data.description.size() <= 10000)) &&
@@ -24,16 +37,17 @@ service cloud.firestore {
              (!('priority' in data) || (data.priority in ['High', 'Medium', 'Low'])) &&
              (!('matrixQuadrant' in data) || (data.matrixQuadrant in ['do_first', 'schedule', 'delegate', 'eliminate'])) &&
              (!('isPublic' in data) || data.isPublic is bool) &&
-             (!('tags' in data) || (data.tags is list && data.tags.size() <= 30 && (data.tags.size() == 0 || data.tags[0] is string))) &&
-             (!('collaborators' in data) || (data.collaborators is list && data.collaborators.size() <= 30 && (data.collaborators.size() == 0 || data.collaborators[0] is string))) &&
+             (!('tags' in data) || isStringList(data.tags, 30)) &&
+             (!('collaborators' in data) || isStringList(data.collaborators, 30)) &&
              (!('aiResearchSummary' in data) || (data.aiResearchSummary is string && data.aiResearchSummary.size() <= 15000)) &&
-             (!('aiActionPlan' in data) || (data.aiActionPlan is list && data.aiActionPlan.size() <= 50 && (data.aiActionPlan.size() == 0 || data.aiActionPlan[0] is string))) &&
-             (!('aiMarketplaceKeywords' in data) || (data.aiMarketplaceKeywords is list && data.aiMarketplaceKeywords.size() <= 50 && (data.aiMarketplaceKeywords.size() == 0 || data.aiMarketplaceKeywords[0] is string))) &&
+             (!('aiActionPlan' in data) || isStringList(data.aiActionPlan, 50)) &&
+             (!('aiMarketplaceKeywords' in data) || isStringList(data.aiMarketplaceKeywords, 50)) &&
              (!('aiMarketplaceItems' in data) || (data.aiMarketplaceItems is string && data.aiMarketplaceItems.size() <= 25000));
     }
 
     function isValidComment(data, ideaId) {
-      return data.ideaId == ideaId &&
+      return data.keys().hasOnly(['ideaId', 'userId', 'userName', 'content', 'createdAt']) &&
+             data.ideaId == ideaId &&
              data.userId == request.auth.uid &&
              data.content is string && data.content.size() >= 1 && data.content.size() <= 2000 &&
              (!('userName' in data) || (data.userName is string && data.userName.size() <= 100));

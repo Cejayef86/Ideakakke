@@ -10,9 +10,8 @@ import com.google.firebase.auth.auth
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
-import com.google.firebase.firestore.Query
+import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.snapshots
-import com.google.firebase.firestore.toObjects
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
@@ -31,10 +30,13 @@ class IdeaRepository(private val db: FirebaseFirestore) {
     )
 
     private val auth = Firebase.auth
+    private val sessionUserId = auth.currentUser?.uid
 
     private fun requireUserId(): String {
-        return auth.currentUser?.uid
-            ?: throw IllegalStateException("User must be signed in with Google to access ideas.")
+        check(sessionUserId != null && auth.currentUser?.uid == sessionUserId) {
+            "Your session has ended. Please sign in again."
+        }
+        return sessionUserId
     }
 
     /**
@@ -46,7 +48,7 @@ class IdeaRepository(private val db: FirebaseFirestore) {
             .whereEqualTo("userId", uid)
 
         val flow = query.snapshots().map { snapshot ->
-            snapshot.toObjects<Idea>().sortedByDescending { it.createdAt?.toDate()?.time ?: 0L }
+            snapshot.documents.mapNotNull { it.decodeOrNull<Idea>() }.sortedByDescending { it.createdAt?.toDate()?.time ?: 0L }
         }.catch { error ->
             val firestoreError = generateSequence(error) { it.cause }
                 .filterIsInstance<FirebaseFirestoreException>()
@@ -62,11 +64,12 @@ class IdeaRepository(private val db: FirebaseFirestore) {
      * Observes public/shared community ideas created by users for collaboration.
      */
     fun observeCommunityIdeas(): Flow<List<Idea>> = flow {
+        requireUserId()
         val flow = db.collection("ideas")
             .whereEqualTo("isPublic", true)
             .snapshots()
             .map { snapshot ->
-                snapshot.toObjects<Idea>().sortedByDescending { it.createdAt?.toDate()?.time ?: 0L }
+                snapshot.documents.mapNotNull { it.decodeOrNull<Idea>() }.sortedByDescending { it.createdAt?.toDate()?.time ?: 0L }
             }.catch { error ->
                 val firestoreError = generateSequence(error) { it.cause }
                     .filterIsInstance<FirebaseFirestoreException>()
@@ -144,22 +147,7 @@ class IdeaRepository(private val db: FirebaseFirestore) {
         require(idea.id.isNotBlank()) { "Idea ID must not be blank" }
         val docRef = db.collection("ideas").document(idea.id)
 
-        val updates = hashMapOf<String, Any?>(
-            "title" to idea.title.trim(),
-            "description" to idea.description.trim(),
-            "category" to idea.category.trim(),
-            "tags" to idea.tags,
-            "priority" to idea.priority,
-            "matrixQuadrant" to idea.matrixQuadrant,
-            "isPublic" to idea.isPublic,
-            "collaborators" to idea.collaborators,
-            "aiResearchSummary" to idea.aiResearchSummary,
-            "aiActionPlan" to idea.aiActionPlan,
-            "aiMarketplaceKeywords" to idea.aiMarketplaceKeywords,
-            "aiMarketplaceItems" to idea.aiMarketplaceItems,
-            "authorName" to idea.authorName,
-            "updatedAt" to FieldValue.serverTimestamp()
-        )
+        val updates = ideaDetailUpdates(idea)
 
         try {
             docRef.update(updates).await()
@@ -178,6 +166,7 @@ class IdeaRepository(private val db: FirebaseFirestore) {
         marketplaceKeywords: List<String>,
         marketplaceItemsJson: String
     ) {
+        requireUserId()
         val docRef = db.collection("ideas").document(ideaId)
         val updates = hashMapOf<String, Any?>(
             "aiResearchSummary" to researchSummary,
@@ -197,6 +186,7 @@ class IdeaRepository(private val db: FirebaseFirestore) {
     }
 
     suspend fun addCollaborator(ideaId: String, collaboratorName: String) {
+        requireUserId()
         val docRef = db.collection("ideas").document(ideaId)
         try {
             docRef.update(
@@ -228,7 +218,7 @@ class IdeaRepository(private val db: FirebaseFirestore) {
         return db.collection("ideas").document(ideaId).collection("comments")
             .snapshots()
             .map { snapshot ->
-                snapshot.toObjects<Comment>().sortedBy { it.createdAt?.toDate()?.time ?: 0L }
+                snapshot.documents.mapNotNull { it.decodeOrNull<Comment>() }.sortedBy { it.createdAt?.toDate()?.time ?: 0L }
             }
             .catch { error ->
                 val firestoreError = generateSequence(error) { it.cause }
@@ -261,6 +251,7 @@ class IdeaRepository(private val db: FirebaseFirestore) {
     }
 
     suspend fun deleteComment(ideaId: String, commentId: String) {
+        requireUserId()
         val docRef = db.collection("ideas").document(ideaId).collection("comments").document(commentId)
         try {
             docRef.delete().await()
@@ -271,6 +262,28 @@ class IdeaRepository(private val db: FirebaseFirestore) {
             throw e
         }
     }
+
+    suspend fun updateQuadrant(ideaId: String, quadrant: String) {
+        requireUserId()
+        db.collection("ideas").document(ideaId).update(
+            mapOf("matrixQuadrant" to quadrant, "updatedAt" to FieldValue.serverTimestamp())
+        ).await()
+    }
+
+    suspend fun updatePriority(ideaId: String, priority: String) {
+        requireUserId()
+        db.collection("ideas").document(ideaId).update(
+            mapOf("priority" to priority, "updatedAt" to FieldValue.serverTimestamp())
+        ).await()
+    }
+}
+
+// A malformed legacy/public document must not make every other document disappear.
+private inline fun <reified T> DocumentSnapshot.decodeOrNull(): T? = try {
+    toObject(T::class.java)
+} catch (e: RuntimeException) {
+    Log.w(TAG, "Skipping malformed document $id", e)
+    null
 }
 
 private suspend fun <T> kotlinx.coroutines.flow.FlowCollector<T>.emitAll(flow: Flow<T>) {

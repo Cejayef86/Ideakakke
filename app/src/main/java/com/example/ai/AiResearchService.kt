@@ -4,6 +4,9 @@ import android.util.Log
 import com.example.model.MarketplaceItem
 import com.google.firebase.Firebase
 import com.google.firebase.ai.ai
+import com.google.firebase.ai.type.GenerativeBackend
+import com.google.firebase.ai.type.ThinkingLevel
+import com.google.firebase.ai.type.thinkingConfig
 import com.google.firebase.ai.type.Schema
 import com.google.firebase.ai.type.generationConfig
 import kotlinx.coroutines.CancellationException
@@ -46,9 +49,14 @@ class AiResearchService {
     )
 
     private val generativeModel by lazy {
-        Firebase.ai.generativeModel(
-            modelName = "gemini-3.8-flash",
+        Firebase.ai(
+            backend = GenerativeBackend.googleAI(),
+            useLimitedUseAppCheckTokens = true
+        ).generativeModel(
+            modelName = "gemini-3.5-flash-lite",
             generationConfig = generationConfig {
+                // Keep interactive idea research responsive within the request timeout.
+                thinkingConfig = thinkingConfig { thinkingLevel = ThinkingLevel.LOW }
                 responseMimeType = "application/json"
                 responseSchema = researchSchema
             }

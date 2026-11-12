@@ -1,17 +1,14 @@
 import com.google.gms.googleservices.GoogleServicesPlugin.MissingGoogleServicesStrategy
-import java.time.Duration
 
 plugins {
   alias(libs.plugins.android.application)
   alias(libs.plugins.kotlin.compose)
-  alias(libs.plugins.google.devtools.ksp)
-  alias(libs.plugins.secrets)
   alias(libs.plugins.google.services)
 }
 
 android {
   namespace = "com.example"
-  compileSdk { version = release(36) { minorApiLevel = 1 } }
+  compileSdk = 36
 
   defaultConfig {
     applicationId = "com.aistudio.ideatracker.qvnzpt"
@@ -53,7 +50,12 @@ android {
     debug {
       // Do not remove or modify this signingConfig assignment. It is necessary for Android apps in
       // AI Studio.
-      signingConfig = signingConfigs.getByName("debugConfig")
+      signingConfig = if (file("${rootDir}/debug.keystore").exists()) {
+        signingConfigs.getByName("debugConfig")
+      } else {
+        // AGP creates the standard development key on a fresh workstation or CI runner.
+        signingConfigs.getByName("debug")
+      }
     }
   }
   compileOptions {
@@ -71,27 +73,12 @@ android {
   }
 }
 
-// Configure the Secrets Gradle Plugin to use .env and .env.example files
-// to match the convention used in Web projects.
-secrets {
-  propertiesFileName = ".env"
-  defaultPropertiesFileName = ".env.example"
-  ignoreList.add("FIREBASE_APPCHECK_DEBUG_TOKEN")
-}
-
 googleServices { missingGoogleServicesStrategy = MissingGoogleServicesStrategy.WARN }
 
-// Some unused dependencies are commented out below instead of being removed.
-// This makes it easy to add them back in the future if needed.
 dependencies {
   implementation(platform(libs.androidx.compose.bom))
   implementation(platform(libs.firebase.bom))
-  // implementation(libs.accompanist.permissions)
   implementation(libs.androidx.activity.compose)
-  // implementation(libs.androidx.camera.camera2)
-  // implementation(libs.androidx.camera.core)
-  // implementation(libs.androidx.camera.lifecycle)
-  // implementation(libs.androidx.camera.view)
   implementation(libs.androidx.compose.material.icons.core)
   implementation(libs.androidx.compose.material.icons.extended)
   implementation(libs.androidx.compose.material3)
@@ -99,15 +86,9 @@ dependencies {
   implementation(libs.androidx.compose.ui.graphics)
   implementation(libs.androidx.compose.ui.tooling.preview)
   implementation(libs.androidx.core.ktx)
-  // implementation(libs.androidx.datastore.preferences)
   implementation(libs.androidx.lifecycle.runtime.compose)
   implementation(libs.androidx.lifecycle.runtime.ktx)
   implementation(libs.androidx.lifecycle.viewmodel.compose)
-  // implementation(libs.androidx.navigation.compose)
-  implementation(libs.androidx.room.ktx)
-  implementation(libs.androidx.room.runtime)
-  // implementation(libs.coil.compose)
-  implementation(libs.converter.moshi)
   implementation(libs.firebase.ai)
   // Firestore and Auth
   implementation(libs.firebase.firestore)
@@ -115,15 +96,10 @@ dependencies {
   implementation(libs.androidx.credentials)
   implementation(libs.androidx.credentials.play.services)
   implementation(libs.googleid)
-  implementation(libs.firebase.appcheck.recaptcha)
-  implementation(libs.firebase.appcheck.debug)
+  implementation(libs.firebase.appcheck.playintegrity)
+  debugImplementation(libs.firebase.appcheck.debug)
   implementation(libs.kotlinx.coroutines.android)
   implementation(libs.kotlinx.coroutines.core)
-  implementation(libs.logging.interceptor)
-  implementation(libs.moshi.kotlin)
-  implementation(libs.okhttp)
-  // implementation(libs.play.services.location)
-  implementation(libs.retrofit)
   testImplementation(libs.androidx.compose.ui.test.junit4)
   testImplementation(libs.androidx.core)
   testImplementation(libs.androidx.junit)
@@ -137,6 +113,28 @@ dependencies {
   androidTestImplementation(libs.androidx.runner)
   debugImplementation(libs.androidx.compose.ui.test.manifest)
   debugImplementation(libs.androidx.compose.ui.tooling)
-  "ksp"(libs.androidx.room.compiler)
-  "ksp"(libs.moshi.kotlin.codegen)
 }
+
+// This task holds only configuration values, so it is compatible with configuration caching.
+abstract class ValidateReleaseConfiguration : DefaultTask() {
+  @get:Internal abstract val firebaseConfig: org.gradle.api.file.RegularFileProperty
+  @get:Internal abstract val uploadKey: org.gradle.api.file.RegularFileProperty
+  @get:Input abstract val passwordsConfigured: org.gradle.api.provider.Property<Boolean>
+
+  @TaskAction fun validate() {
+    val config = firebaseConfig.get().asFile
+    require(config.isFile && !config.readText().contains("demo-ideaforge")) {
+      "Release requires the real app/google-services.json from Firebase Console."
+    }
+    require(uploadKey.orNull?.asFile?.isFile == true && passwordsConfigured.get()) {
+      "Release requires KEYSTORE_PATH, STORE_PASSWORD and KEY_PASSWORD for your upload key."
+    }
+  }
+}
+val validateReleaseConfiguration by tasks.registering(ValidateReleaseConfiguration::class) {
+  firebaseConfig.set(layout.projectDirectory.file("google-services.json"))
+  val signing = android.signingConfigs.getByName("release")
+  signing.storeFile?.let { uploadKey.set(it) }
+  passwordsConfigured.set(!signing.storePassword.isNullOrBlank() && !signing.keyPassword.isNullOrBlank())
+}
+tasks.matching { it.name == "preReleaseBuild" }.configureEach { dependsOn(validateReleaseConfiguration) }

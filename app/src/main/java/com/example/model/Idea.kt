@@ -3,6 +3,7 @@ package com.example.model
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.DocumentId
 import com.google.firebase.firestore.IgnoreExtraProperties
+import com.google.firebase.firestore.PropertyName
 import com.google.firebase.firestore.ServerTimestamp
 import org.json.JSONArray
 import org.json.JSONObject
@@ -18,6 +19,7 @@ data class Idea(
     val tags: List<String> = emptyList(),
     val priority: String = "Medium", // "High", "Medium", "Low"
     val matrixQuadrant: String = "schedule", // "do_first", "schedule", "delegate", "eliminate"
+    @get:PropertyName("isPublic") @field:PropertyName("isPublic")
     val isPublic: Boolean = false,
     val collaborators: List<String> = emptyList(),
     val aiResearchSummary: String = "",
