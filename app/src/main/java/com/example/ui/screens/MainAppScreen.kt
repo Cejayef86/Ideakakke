@@ -91,8 +91,10 @@ import com.example.ui.theme.IndigoPrimary
 @Composable
 fun MainAppScreen(
     viewModel: IdeaViewModel,
-    onSignOut: () -> Unit
+    onSignOut: () -> Unit,
+    onDeleteAccount: () -> Unit
 ) {
+    val uri = androidx.compose.ui.platform.LocalUriHandler.current
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val credentialManager = remember { CredentialManager.create(context) }
@@ -119,6 +121,12 @@ fun MainAppScreen(
     val errorMessage by viewModel.errorMessage.collectAsState()
     val successMessage by viewModel.successMessage.collectAsState()
 
+    val termsAccepted by viewModel.termsAccepted.collectAsState()
+    val blockedUsers by viewModel.blockedUsers.collectAsState()
+    var researchTarget by remember { mutableStateOf<Idea?>(null) }
+    var reportTarget by remember { mutableStateOf<ReportTarget?>(null) }
+    var blockTarget by remember { mutableStateOf<String?>(null) }
+    var showBlockedUsers by remember { mutableStateOf(false) }
     var showAddEditDialog by remember { mutableStateOf(false) }
     var ideaToEdit by remember { mutableStateOf<Idea?>(null) }
     var showProfileMenu by remember { mutableStateOf(false) }
@@ -155,7 +163,7 @@ fun MainAppScreen(
                 showDeleteConfirmIdeaId = activeIdea!!.id
             },
             onTriggerResearch = {
-                viewModel.triggerAiResearch(activeIdea!!)
+                researchTarget = activeIdea
             },
             onAddCollaborator = { name ->
                 viewModel.addCollaborator(activeIdea!!.id, name)
@@ -165,7 +173,9 @@ fun MainAppScreen(
             },
             onDeleteComment = { commentId ->
                 viewModel.deleteComment(activeIdea!!.id, commentId)
-            }
+            },
+            onReport = { kind, commentId -> reportTarget = ReportTarget(kind, activeIdea!!.id, commentId) },
+            onBlock = { uid -> blockTarget = uid }
         )
     } else {
         Scaffold(
@@ -200,7 +210,7 @@ fun MainAppScreen(
                     actions = {
                         // User Profile Icon & Menu
                         Box {
-                            IconButton(onClick = { showProfileMenu = true }) {
+                            IconButton(onClick = { showProfileMenu = true }, modifier = Modifier.testTag("account_menu")) {
                                 Box(
                                     modifier = Modifier
                                         .size(32.dp)
@@ -225,6 +235,10 @@ fun MainAppScreen(
                                     enabled = false,
                                     onClick = {}
                                 )
+                                DropdownMenuItem(text = { Text("Privacy policy") }, onClick = { showProfileMenu = false; uri.openUri("$SUPPORT_SITE/privacy") })
+                                DropdownMenuItem(text = { Text("Terms and community rules") }, onClick = { showProfileMenu = false; uri.openUri("$SUPPORT_SITE/terms") })
+                                DropdownMenuItem(text = { Text("Blocked users") }, onClick = { showProfileMenu = false; showBlockedUsers = true })
+                                DropdownMenuItem(text = { Text("Delete account", color = MaterialTheme.colorScheme.error) }, onClick = { showProfileMenu = false; onDeleteAccount() }, modifier = Modifier.testTag("delete_account"))
                                 DropdownMenuItem(
                                     text = { Text("Sign Out", color = MaterialTheme.colorScheme.error) },
                                     leadingIcon = {
@@ -318,9 +332,7 @@ fun MainAppScreen(
                             onDeleteClick = { idea ->
                                 showDeleteConfirmIdeaId = idea.id
                             },
-                            onResearchClick = { idea ->
-                                viewModel.triggerAiResearch(idea)
-                            },
+                            onResearchClick = { idea -> researchTarget = idea },
                             onQuadrantChange = { idea, quad ->
                                 viewModel.updateIdeaQuadrant(idea, quad)
                             }
@@ -346,6 +358,24 @@ fun MainAppScreen(
                 }
             }
         }
+    }
+
+    if (!termsAccepted) CommunityTermsDialog(
+        onAccept = viewModel::acceptCommunityTerms,
+        onSignOut = { signOutUser(credentialManager, coroutineScope, onSignOut) },
+        onDeleteAccount = onDeleteAccount
+    )
+    reportTarget?.let { target -> ReportContentDialog(target, { reportTarget = null }) { reason, details, done, failed ->
+        viewModel.reportContent(target.kind, target.ideaId, target.commentId, reason, details, done, failed)
+    } }
+    blockTarget?.let { uid -> BlockUserDialog({ blockTarget = null }) { viewModel.blockUser(uid); blockTarget = null } }
+    if (showBlockedUsers) BlockedUsersDialog(blockedUsers, { showBlockedUsers = false }, viewModel::unblockUser)
+
+    researchTarget?.let { idea ->
+        AlertDialog(onDismissRequest = { researchTarget = null }, title = { Text("Generate suggestions with Google AI?") },
+            text = { Text("This sends this idea's title, description, category and tags to Google's Gemini service. On the current unpaid service, Google may use prompts and responses to improve its products, and human reviewers may process them. Don't send confidential, sensitive or personal information. AI can be inaccurate; verify its suggestions.") },
+            confirmButton = { TextButton(onClick = { researchTarget = null; viewModel.triggerAiResearch(idea) }) { Text("Generate with Google AI") } },
+            dismissButton = { TextButton(onClick = { researchTarget = null }) { Text("Cancel") } })
     }
 
     // Add / Edit Idea Dialog

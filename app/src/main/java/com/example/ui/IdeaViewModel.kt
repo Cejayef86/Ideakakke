@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.ai.AiResearchService
+import com.example.data.SafetyRepository
 import com.example.data.observeSelection
 import com.example.data.IdeaRepository
 import com.example.model.Comment
@@ -32,8 +33,51 @@ enum class ViewMode {
 
 class IdeaViewModel(application: Application) : AndroidViewModel(application) {
 
+    private val _errorMessage = MutableStateFlow<String?>(null)
+    val errorMessage = _errorMessage.asStateFlow()
+    private val _successMessage = MutableStateFlow<String?>(null)
+    val successMessage = _successMessage.asStateFlow()
     private val repository = IdeaRepository(application)
     private val aiService = AiResearchService()
+    private val safety = SafetyRepository(com.google.firebase.firestore.FirebaseFirestore.getInstance(application.getString(com.example.R.string.firestore_database_id)))
+    val blockedUsers = safety.observeBlocks().catch { _errorMessage.value = "Could not load blocked users. Retry your connection."; emit(emptySet()) }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
+    val termsAccepted = safety.observeTerms().catch { _errorMessage.value = "Could not load your terms consent. Retry your connection."; emit(false) }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    fun acceptCommunityTerms(onError: (String) -> Unit) {
+        viewModelScope.launch {
+            try { kotlinx.coroutines.withTimeout(20000) { safety.acceptTerms() } }
+            catch (e: CancellationException) {
+                if (e !is kotlinx.coroutines.TimeoutCancellationException) throw e
+                onError("Couldn't save your choice. Reconnect and retry.")
+            }
+            catch (e: Exception) { onError("Couldn't save your choice. Reconnect and retry.") }
+        }
+    }
+    fun blockUser(uid: String) = safetyAction {
+        safety.block(uid)
+        _selectedIdeaId.value = null
+        _successMessage.value = "User blocked. Their ideas and comments are hidden."
+    }
+    fun unblockUser(uid: String) = safetyAction { safety.unblock(uid) }
+    fun reportContent(kind: String, ideaId: String, commentId: String, reason: String, details: String, onSuccess: () -> Unit, onError: (String) -> Unit) {
+        viewModelScope.launch {
+            try {
+                kotlinx.coroutines.withTimeout(20000) { safety.report(kind, ideaId, commentId, reason, details) }
+                onSuccess()
+            } catch (e: CancellationException) {
+                if (e !is kotlinx.coroutines.TimeoutCancellationException) throw e
+                onError("The report hasn't been confirmed. Reconnect and retry.")
+            } catch (e: Exception) { onError("Couldn't send your report. Reconnect and retry.") }
+        }
+    }
+    private fun safetyAction(action: suspend () -> Unit) {
+        viewModelScope.launch {
+            try { action() }
+            catch (e: CancellationException) { throw e }
+            catch (e: Exception) { _errorMessage.value = "Couldn't complete this action. Check your connection and retry." }
+        }
+    }
 
     val currentUserId: String?
         get() = Firebase.auth.currentUser?.uid
@@ -51,6 +95,7 @@ class IdeaViewModel(application: Application) : AndroidViewModel(application) {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), emptyList())
 
     val communityIdeas: StateFlow<List<Idea>> = repository.observeCommunityIdeas()
+        .combine(blockedUsers) { ideas, blocked -> ideas.filter { it.userId !in blocked } }
         .catch { e ->
             Log.e(TAG, "Error collecting community ideas", e)
             _errorMessage.value = "Could not load community ideas. Please sign in again."
@@ -81,12 +126,6 @@ class IdeaViewModel(application: Application) : AndroidViewModel(application) {
     private val _researchingIdeaId = MutableStateFlow<String?>(null)
     val researchingIdeaId = _researchingIdeaId.asStateFlow()
 
-    private val _errorMessage = MutableStateFlow<String?>(null)
-    val errorMessage = _errorMessage.asStateFlow()
-
-    private val _successMessage = MutableStateFlow<String?>(null)
-    val successMessage = _successMessage.asStateFlow()
-
     // Active Idea Detail state
     private val _selectedIdeaId = MutableStateFlow<String?>(null)
     val selectedIdeaId = _selectedIdeaId.asStateFlow()
@@ -101,7 +140,8 @@ class IdeaViewModel(application: Application) : AndroidViewModel(application) {
         empty = emptyList<Comment>(),
         onError = { _errorMessage.value = "Could not load comments for this idea." },
         observe = repository::observeComments
-    ).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), emptyList())
+    ).combine(blockedUsers) { comments, blocked -> comments.filter { it.userId !in blocked } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), emptyList())
 
     // Filtered user ideas based on search, category, tag, and priority
     val filteredUserIdeas: StateFlow<List<Idea>> = combine(

@@ -7,6 +7,8 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -20,6 +22,13 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.compose.ui.platform.LocalContext
 import android.app.Application
 import com.example.data.configureAppCheck
+import androidx.credentials.CredentialManager
+import androidx.compose.runtime.rememberCoroutineScope
+import com.example.ui.AccountViewModel
+import com.example.ui.AccountState
+import com.example.ui.signOutUser
+import com.example.ui.screens.AccountStatusScreen
+import com.example.ui.screens.DeleteAccountDialog
 import com.example.ui.AuthScreen
 import com.example.ui.IdeaViewModel
 import com.example.ui.screens.MainAppScreen
@@ -71,6 +80,19 @@ fun AppNavigationRoot() {
         val uid = currentUser!!.uid
         // Key by uid so account switching or logout cleans up and resets ViewModels cleanly
         key(uid) {
+            val account: AccountViewModel = viewModel(key = "account:$uid")
+            val accountState by account.state.collectAsState()
+            val accountError by account.error.collectAsState()
+            val context = LocalContext.current
+            val scope = rememberCoroutineScope()
+            var showDeleteAccount by remember { mutableStateOf(false) }
+            LaunchedEffect(uid) { account.checkStatus() }
+            if (accountState != AccountState.ACTIVE) {
+                AccountStatusScreen(accountState, accountError,
+                    onRetry = account::checkStatus,
+                    onDelete = { showDeleteAccount = true },
+                    onSignOut = { signOutUser(CredentialManager.create(context), scope) })
+            } else {
             val sessionOwner: SessionViewModelStoreOwner = viewModel(key = "session:$uid")
             val activity = LocalActivity.current
             DisposableEffect(sessionOwner, activity) {
@@ -89,8 +111,16 @@ fun AppNavigationRoot() {
                 viewModel = ideaViewModel,
                 onSignOut = {
                     currentUser = null
-                }
+                },
+                onDeleteAccount = { showDeleteAccount = true }
             )
+            }
+            if (showDeleteAccount) {
+                DeleteAccountDialog(onDismiss = { showDeleteAccount = false }, onVerified = {
+                    showDeleteAccount = false
+                    account.delete(it)
+                })
+            }
         }
     }
 }
